@@ -31,6 +31,7 @@ const vi = {
     brandBottom: "Phú An",
     switchLabel: "EN",
     switchAria: "Switch to English",
+    login: "Đăng nhập",
   },
   footer: {
     quickLinks: "Liên kết nhanh",
@@ -212,6 +213,7 @@ const en: Messages = {
     brandBottom: "Elevator",
     switchLabel: "VI",
     switchAria: "Chuyển sang tiếng Việt",
+    login: "Log in",
   },
   footer: {
     quickLinks: "Quick links",

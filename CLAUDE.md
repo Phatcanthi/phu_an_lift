@@ -40,6 +40,8 @@ Backend layering (`backend/src`): `Api` → `Application` + `Infrastructure`; `A
 
 Frontend: `frontend/src/app` (App Router). API base URL comes from `NEXT_PUBLIC_API_BASE_URL` (copy `.env.example` to `.env.local`).
 
+HR dashboard prototype (`/admin`, Vietnamese only, light theme): own root layout and `admin.css`, separate from the public site; `src/middleware.ts` skips `/admin`. It runs on mock data only: seed data in `src/admin/mock.ts`, edits kept in the browser's localStorage by `src/admin/store.tsx`, and the sign-in in `src/admin/auth.ts` is a fake (any email and password) that protects nothing. Replace these with backend calls and the real Identity cookie auth before using it for real data.
+
 Languages (Vietnamese default, English): no i18n library. All pages live under `src/app/[locale]`; `src/middleware.ts` serves Vietnamese without a prefix (rewrites `/x` to `/vi/x`, redirects `/vi/x` to `/x`) and English under `/en`. UI strings are in `src/i18n/messages.ts` (`en` is typed against `vi`); catalogue content is in `src/content/vi` and `src/content/en` and must keep the same shape (`src/content/index.ts` fails the build otherwise); company facts shared by both are in `src/content/company.ts`. Write internal links without a locale and use `Link` from `@/i18n/Link`, which adds the prefix. Product slugs and the `?loai=` filter are the same in every language. New text goes in both languages.
 
 ## Dependency notes

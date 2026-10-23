@@ -11,6 +11,9 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const first = pathname.split("/")[1];
 
+  // The HR dashboard is not part of the localized public site.
+  if (first === "admin") return NextResponse.next();
+
   if (first === defaultLocale) {
     const url = request.nextUrl.clone();
     url.pathname = pathname.slice(defaultLocale.length + 1) || "/";
