@@ -1,0 +1,35 @@
+{
+    "name": "phuan-elevator-web",
+    "version": "0.1.0",
+    "private": true,
+    "engines": {
+        "node": ">=20.9.0"
+    },
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@google/model-viewer": "4.4.0",
+        "@react-three/fiber": "9.8.2",
+        "next": "15.5.28",
+        "react": "19.1.1",
+        "react-dom": "19.1.1",
+        "three": "0.186.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.19.0",
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "@types/three": "0.186.0",
+        "typescript": "^5.9.0"
+    },
+    "overrides": {
+        "@google/model-viewer": {
+            "three": "$three"
+        },
+        "postcss": "^8.5.31"
+    }
+}

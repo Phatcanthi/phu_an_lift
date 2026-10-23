@@ -1,0 +1,45 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+Public website and admin dashboard for CÔNG TY CỔ PHẦN THANG MÁY PHÚ AN, both served by one shared business backend (modular monolith, no microservices). Currently only the initial foundation exists: health endpoint, Identity/EF wiring, and a placeholder home page. Do not invent company contact info, history, products, certifications or project records.
+
+Fixed decisions: Next.js (App Router, TypeScript) frontend; ASP.NET Core Web API (.NET 9); Supabase PostgreSQL via EF Core + Npgsql; ASP.NET Core Identity (`IdentityUser<Guid>`) with cookie auth. **EF Core migrations are the only way to change the schema — never use `EnsureCreated()`.**
+
+## Commands
+
+Backend (run from `backend/`):
+```
+dotnet build
+dotnet test
+dotnet test --filter "FullyQualifiedName~HealthEndpointTests"   # single test/class
+dotnet run --project src/PhuAn.Api --launch-profile http        # http://localhost:5044/api/health
+```
+
+Frontend (run from `frontend/`):
+```
+npm install
+npm run dev          # http://localhost:3000
+npm run build
+npm run typecheck
+```
+
+Windows/PowerShell: if `npm` is blocked by execution policy, use `npm.cmd` (or `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`). There is no lint script yet.
+
+## Architecture
+
+Backend layering (`backend/src`): `Api` → `Application` + `Infrastructure`; `Application` → `Domain`; `Infrastructure` → `Application` + `Domain`. `Domain` and `Application` are currently empty. `tests/PhuAn.Tests` references all projects.
+
+- `PhuAn.Api/Program.cs` composes everything: `AddInfrastructure`, Identity (`AddIdentityCore` + roles + EF stores + `AddSignInManager`), `AddIdentityCookies`, CORS, and minimal-API endpoints. It ends with `public partial class Program;` so tests can use `WebApplicationFactory<Program>`.
+- Identity cookie: redirects are replaced by 401/403 responses (API, not MVC pages); cookie is HttpOnly, Secure, SameSite=Lax. Password min length 12, unique email required.
+- `PhuAn.Infrastructure` owns `AppDbContext` (`IdentityDbContext<IdentityUser<Guid>, IdentityRole<Guid>, Guid>`) and `DependencyInjection.AddInfrastructure`. Migrations assembly is set to the Infrastructure assembly, so new migrations belong there (`dotnet ef ... --project src/PhuAn.Infrastructure --startup-project src/PhuAn.Api`). No migrations exist yet and `dotnet-ef` is not installed.
+- The API starts without a database: the connection string (`ConnectionStrings:DefaultConnection`) is empty in `appsettings.json` and only needed on first DB use. Supply it via user-secrets or env vars (`ConnectionStrings__DefaultConnection`); see `backend/.env.example`. Never commit real credentials, seed admin accounts or hardcoded passwords.
+- CORS origins come from `Cors:AllowedOrigins` (default `http://localhost:3000`); the frontend must send credentials for cookie auth.
+
+Frontend: `frontend/src/app` (App Router). API base URL comes from `NEXT_PUBLIC_API_BASE_URL` (copy `.env.example` to `.env.local`).
+
+## Dependency notes
+
+`next` is pinned to an exact patched version and `package.json` has a `postcss` override because earlier versions failed `npm audit`. Run `npm audit` after changing frontend dependencies.
