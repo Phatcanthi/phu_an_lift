@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { applyMarble, setInlay } from "../marbleFloor";
-import { groups } from "./config";
-import type { Group, GroupId, Part, Selection, Space } from "./config";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { VARIANT_BASE, groups } from "./config";
+import type { Group, GroupId, Option, Part, Selection, Space } from "./config";
 
 export const MODEL_URL = "/models/room.glb";
 
@@ -17,8 +18,88 @@ type Standard = THREE.MeshStandardMaterial;
  * landing call buttons. Every other mesh belongs to the room and is hidden in the lift-only view.
  */
 const LIFT_PART =
-  /^(Back_|Front_(Header|Return)|Side_Seam|Car_Door|Ceiling_(Mirror|Panel|Shell)|COP_|Door_Sill|Downlight_|Floor$|Handrail_|Indicator_|Jamb_|Skirting_|Wall_(Back|Left|Right)$|Lift_Frame_|Call_)/;
+  /^(Back_|Front_(Header|Return)|Side_Seam|Car_Door|Ceiling_(Mirror|Panel|Shell)|COP_|Door_Sill|Downlight_|Floor(_\d+)?$|Handrail_|Indicator_|Jamb_|Skirting_|Wall_(Back|Left|Right)$|Lift_Frame_|Call_|Landing_Door_)/;
 export const isLiftPart = (name: string) => LIFT_PART.test(name);
+
+/** The option chosen for a group; an unknown or empty code falls back to the group's first option. */
+export const optionFor = (group: Group, selection: Selection): Option | undefined =>
+  group.options.find((o) => o.code === selection[group.id]) ?? group.options[0];
+
+/** The 3D variant files a selection asks for, keyed by group. Groups on a plain tint option are absent. */
+export function variantFiles(selection: Selection): Map<Group["id"], string> {
+  const files = new Map<Group["id"], string>();
+  for (const group of groups) {
+    const glb = optionFor(group, selection)?.glb;
+    if (glb) files.set(group.id, glb);
+  }
+  return files;
+}
+
+const buffers = new Map<string, Promise<ArrayBuffer>>();
+
+/** Loads the variant files (each fetched once, parsed afresh so every model owns what it disposes). */
+export async function loadVariants(files: Map<Group["id"], string>) {
+  const loaded = new Map<Group["id"], THREE.Group>();
+  await Promise.all(
+    [...files].map(async ([id, file]) => {
+      const url = VARIANT_BASE + file;
+      let bytes = buffers.get(url);
+      if (!bytes) {
+        bytes = fetch(url).then((r) => {
+          if (!r.ok) throw new Error(`${url}: ${r.status}`);
+          return r.arrayBuffer();
+        });
+        buffers.set(url, bytes);
+        bytes.catch(() => buffers.delete(url));
+      }
+      const gltf = await new GLTFLoader().parseAsync((await bytes).slice(0), "");
+      loaded.set(id, gltf.scene);
+    }),
+  );
+  return loaded;
+}
+
+/**
+ * The variants are lit by the scene lights alone, while the room model carries its light baked into the
+ * emissive channel, so they would look dark beside it. Give them a share of their own colour as emissive light.
+ */
+function liftVariant(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Standard[]) {
+      if (m.userData.lit) continue;
+      m.userData.lit = true;
+      if (m.emissive.r + m.emissive.g + m.emissive.b > 0.01) {
+        m.emissiveIntensity *= 0.4; // lamps, button rings and display digits already glow
+        continue;
+      }
+      if (m.map) {
+        m.emissiveMap = m.map;
+        m.emissive.set(1, 1, 1);
+      } else {
+        m.emissive.copy(m.color);
+      }
+      m.emissiveIntensity = m.metalness > 0.5 ? 0.3 : 0.6;
+    }
+  });
+}
+
+/** Swaps each variant group's own nodes for the nodes of its chosen file. */
+function applyVariants(scene: THREE.Group, variants: Map<Group["id"], THREE.Group>) {
+  for (const [id, source] of variants) {
+    const replace = groups.find((g) => g.id === id)?.replace;
+    if (!replace) continue;
+    for (const node of scene.children.filter((c) => replace.test(c.name))) {
+      node.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+      node.removeFromParent();
+    }
+    for (const node of [...source.children]) {
+      liftVariant(node);
+      scene.add(node);
+    }
+  }
+}
 
 interface Slot {
   role: Part["role"];
@@ -32,6 +113,8 @@ export interface CabinModel {
   scene: THREE.Group;
   slots: Map<GroupId, Slot[]>;
   doors: { left?: THREE.Object3D; right?: THREE.Object3D; leftX: number; rightX: number };
+  /** Landing doors only exist when a variant brings them; they slide together with the car doors. */
+  landing: { left?: THREE.Object3D; right?: THREE.Object3D; leftX: number; rightX: number };
   mirror: Reflector | null;
   space: Space;
   /** Meshes that only exist for the room; hidden when `space` is `lift`. */
@@ -177,35 +260,50 @@ function splitOuter(scene: THREE.Group, list: Group[], slots: Map<GroupId, Slot[
 function buildMirror(scene: THREE.Group) {
   const recess = scene.getObjectByName("Back_Recess");
   if (!recess) return null;
+  const material = (recess as THREE.Mesh).material as Standard | undefined;
+  // An etched mirror is part mirror, part frosted: a plain reflection would erase the pattern.
+  if (material?.map) return null;
   const box = new THREE.Box3().setFromObject(recess);
   const size = box.getSize(new THREE.Vector3());
+  // A coloured mirror (gold, rose, black titanium) tints what it reflects.
+  // (its hue only: normalised so a dark bronze mirror does not reflect nothing)
+  const tint = new THREE.Color(0x8c8c8c);
+  if (material && material.name !== "Elevator_Mirror") {
+    const hue = material.color.clone();
+    tint.multiply(hue.multiplyScalar(1 / Math.max(hue.r, hue.g, hue.b, 1e-3)));
+  }
   const reflector = new Reflector(new THREE.PlaneGeometry(size.x, size.y), {
     textureWidth: 512,
     textureHeight: 1024,
-    color: 0x8c8c8c,
+    color: tint,
   });
   reflector.position.set((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.max.z + 0.002);
   recess.visible = false;
   return reflector;
 }
 
-export function prepareModel(scene: THREE.Group): CabinModel {
+export function prepareModel(scene: THREE.Group, variants: Map<Group["id"], THREE.Group> = new Map()): CabinModel {
+  applyVariants(scene, variants);
   fixExport(scene);
   const slots = buildSlots(scene, groups);
   // Applied to the per-group copy: `clone()` does not carry the shader hook over from the shared material.
+  // A floor variant is a finished texture and must not get the marble pattern multiplied onto it.
   const floor = scene.getObjectByName("Floor");
   const inlay = floor && { url: "/textures/floor-inlay.jpg", box: new THREE.Box3().setFromObject(floor) };
-  slots.get("floor")?.forEach((s) => applyMarble(s.material, 1.3, inlay || undefined));
+  if (!variants.has("floor")) slots.get("floor")?.forEach((s) => applyMarble(s.material, 1.3, inlay || undefined));
   const roomMeshes: THREE.Mesh[] = [];
   scene.traverse((o) => {
     if ((o as THREE.Mesh).isMesh && !isLiftPart(o.name)) roomMeshes.push(o as THREE.Mesh);
   });
   const left = scene.getObjectByName("Car_Door_L");
   const right = scene.getObjectByName("Car_Door_R");
+  const landL = scene.getObjectByName("Landing_Door_L");
+  const landR = scene.getObjectByName("Landing_Door_R");
   return {
     scene,
     slots,
     doors: { left, right, leftX: left?.position.x ?? 0, rightX: right?.position.x ?? 0 },
+    landing: { left: landL, right: landR, leftX: landL?.position.x ?? 0, rightX: landR?.position.x ?? 0 },
     mirror: buildMirror(scene),
     space: "room",
     roomMeshes,
@@ -214,12 +312,13 @@ export function prepareModel(scene: THREE.Group): CabinModel {
 
 export function applySelection(model: CabinModel, selection: Selection) {
   for (const group of groups) {
-    const option = group.options.find((o) => o.code === selection[group.id]) ?? group.options[0];
+    const option = optionFor(group, selection);
     if (!option) continue;
     for (const slot of model.slots.get(group.id) ?? []) {
       const { material: m } = slot;
       slot.meshes.forEach((mesh) => (mesh.visible = !option.hide && (model.space === "room" || isLiftPart(mesh.name))));
       setInlay(m, option.pattern === "inlay");
+      if (option.glb) continue; // a finished 3D variant keeps its own materials and is never tinted
       const colour = slot.role === "surface" ? option.tint : option.light;
       m.color.copy(slot.color0);
       m.emissive.copy(slot.emissive0);
@@ -246,6 +345,9 @@ export function setDoors(model: CabinModel, open: number) {
   const { left, right, leftX, rightX } = model.doors;
   if (left) left.position.x = leftX + closed;
   if (right) right.position.x = rightX - closed;
+  const land = model.landing;
+  if (land.left) land.left.position.x = land.leftX + closed;
+  if (land.right) land.right.position.x = land.rightX - closed;
 }
 
 export function disposeModel(model: CabinModel) {

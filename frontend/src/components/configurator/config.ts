@@ -35,6 +35,11 @@ export interface Option {
   hide?: boolean;
   /** Draws a ready-made pattern (public/textures) instead of tinting the model's own surface. */
   pattern?: "inlay";
+  /**
+   * A finished 3D variant of the group (path under public/models/variants). Its nodes replace the group's own
+   * nodes in the room model, keep their own materials and are never tinted.
+   */
+  glb?: string;
 }
 
 export interface Part {
@@ -54,7 +59,21 @@ export interface Group {
   id: Exclude<GroupId, "preset">;
   parts: Part[];
   options: Option[];
+  /** Nodes of the room model that a `glb` option takes over; they are removed before its own nodes are added. */
+  replace?: RegExp;
 }
+
+export const VARIANT_BASE = "/models/variants/";
+
+/** Shorthand for a 3D variant option: the file is `<folder>/<folder>_<file>.glb`. */
+const variant = (code: string, swatch: string, folder: string, file: string): Option => ({
+  code,
+  swatch,
+  glb: `${folder}/${folder}_${file}.glb`,
+});
+
+const WOOD = "linear-gradient(135deg, #7a4326, #4a2813)";
+const ETCHED = "repeating-linear-gradient(90deg, #dcdce0 0 3px, #a3a3aa 3px 6px)";
 
 export interface Preset {
   code: string;
@@ -98,7 +117,14 @@ export const groups: Group[] = [
         swatch: "radial-gradient(circle, #ecebe4 0 36%, #1f5a45 39% 62%, #ecebe4 65%)",
         pattern: "inlay",
       },
+      variant("floorDB002", "#adb2a7", "floor", "KA-DB002"),
+      variant("floorDB004", "#bbbebb", "floor", "KA-DB004"),
+      variant("floorDB013", "#9ca79e", "floor", "KA-DB013"),
+      variant("floorDB030", "#dfe1db", "floor", "KA-DB030"),
+      variant("floorDB032", "#c2c7c8", "floor", "KA-DB032"),
+      variant("floorDB036", "#cdbca1", "floor", "KA-DB036"),
     ],
+    replace: /^Floor$/,
   },
   {
     id: "ceiling",
@@ -107,7 +133,14 @@ export const groups: Group[] = [
       { code: "lightNeutral", swatch: "#fff6ea" },
       { code: "lightWarm", swatch: "#ffd9a0", light: "#ffd9a0" },
       { code: "lightCool", swatch: "#d6e6ff", light: "#d6e6ff" },
+      variant("ceilDD101", "#cfcfd2", "ceiling", "DD101"),
+      variant("ceilDD102", "#b4b6ba", "ceiling", "DD102"),
+      variant("ceilDD201", "#2b2b30", "ceiling", "DD201"),
+      variant("ceilDD301", WOOD, "ceiling", "DD301"),
+      variant("ceilDD303", "#b98a5c", "ceiling", "DD303"),
+      variant("ceilDD304", "#d9a08e", "ceiling", "DD304"),
     ],
+    replace: /^(Ceiling_(Shell|Mirror|Panel_[LR])|Downlight_\d+)$/,
   },
   {
     id: "cabinWall",
@@ -118,19 +151,55 @@ export const groups: Group[] = [
         role: "surface",
       },
     ],
-    options: metals,
+    options: [
+      ...metals,
+      variant("wallMirrorEtched", ETCHED, "wall", "mirror-etched"),
+      variant("wallWalnut", WOOD, "wall", "walnut"),
+      variant("wallGold", "#c9a24a", "wall", "gold"),
+      variant("wallRose", "#c58f7e", "wall", "rose"),
+      variant("wallBlackTi", "#2b2b2d", "wall", "black-titanium"),
+    ],
+    replace: /^(Wall_(Back|Left|Right)|Back_|Front_(Header|Return_[LR])|Side_Seam|Skirting_)/,
   },
   {
     id: "cabinDoor",
     parts: [{ nodes: /^(Car_Door_[LR]|Door_Sill)$/, role: "surface" }],
-    options: metals,
+    options: [
+      ...metals,
+      variant("doorTM004", "#8f9195", "cabin_door", "TM004"),
+      variant("doorTM013", "#b9bcc0", "cabin_door", "TM013"),
+      variant("doorTM019", "#d9b94a", "cabin_door", "TM019"),
+      variant("doorTM028", "#8c7a66", "cabin_door", "TM028"),
+      variant("doorTM030", "#8a4a2b", "cabin_door", "TM030"),
+    ],
+    replace: /^(Car_Door_[LR]|Door_Sill)/,
   },
-  // The model has no landing (floor) doors, so there is nothing to attach options to yet.
-  { id: "landingDoor", parts: [], options: [] },
+  // The room model has no landing doors of its own: they only exist as variants, so the first option shows none.
+  {
+    id: "landingDoor",
+    parts: [{ nodes: /^Landing_Door_[LR]$/, role: "surface" }],
+    options: [
+      { code: "landingNone", swatch: "transparent", hide: true },
+      variant("landTM004", "#8f9195", "landing_door", "TM004"),
+      variant("landTM013", "#b9bcc0", "landing_door", "TM013"),
+      variant("landTM019", "#d9b94a", "landing_door", "TM019"),
+      variant("landTM028", "#8c7a66", "landing_door", "TM028"),
+      variant("landTM030", "#8a4a2b", "landing_door", "TM030"),
+    ],
+    replace: /^Landing_Door_/,
+  },
   {
     id: "handrail",
     parts: [{ nodes: /^Handrail_[LR]/, role: "surface" }],
-    options: [...metals, { code: "none", swatch: "transparent", hide: true }],
+    options: [
+      ...metals,
+      { code: "none", swatch: "transparent", hide: true },
+      variant("railFS001", "#cfcfd2", "handrail", "FS001"),
+      variant("railFS002", "#c9a24a", "handrail", "FS002"),
+      variant("railFS003", "#b9bbbf", "handrail", "FS003"),
+      variant("railFS009", WOOD, "handrail", "FS009"),
+    ],
+    replace: /^Handrail_/,
   },
   {
     id: "cabinButtons",
@@ -138,7 +207,15 @@ export const groups: Group[] = [
       { nodes: /^COP_(Plate|Key|Btn_(\d|Close|Open)_Cap)$/, role: "surface" },
       { nodes: /^COP_Btn_(\d|Close|Open)_Ring$/, role: "light" },
     ],
-    options: buttons,
+    options: [
+      ...buttons,
+      variant("copInox", "#cfcfd2", "cop", "inox"),
+      variant("copInoxBlue", "linear-gradient(135deg, #cfcfd2 55%, #59b6ff 55%)", "cop", "inox-blue"),
+      variant("copBrass", "#c9a24a", "cop", "brass"),
+      variant("copBlack", "#2b2b2d", "cop", "black"),
+      variant("copRose", "#c58f7e", "cop", "rose"),
+    ],
+    replace: /^COP_/,
   },
   {
     id: "hallButtons",
@@ -146,13 +223,28 @@ export const groups: Group[] = [
       { nodes: /^Call_Plate$/, role: "surface" },
       { nodes: /^Call_Button_\d+$/, role: "light" },
     ],
-    options: buttons,
+    options: [
+      ...buttons,
+      variant("hallInox", "#cfcfd2", "hall", "inox"),
+      variant("hallBrass", "#c9a24a", "hall", "brass"),
+      variant("hallBlack", "#2b2b2d", "hall", "black"),
+      variant("hallRose", "#c58f7e", "hall", "rose"),
+    ],
+    replace: /^(Call_|Hall_Lantern|Indicator_)/,
   },
   {
     id: "doorFrame",
     parts: [{ nodes: /^(Jamb_(L|R|Top)|Lift_Frame_[LRT])$/, role: "surface" }],
     // The lobby frame is black in the model, so every option names its colour explicitly.
-    options: metals.map((o) => (o.tint ? o : { ...o, tint: "#e2e2e6" })),
+    options: [
+      ...metals.map((o) => (o.tint ? o : { ...o, tint: "#e2e2e6" })),
+      variant("frameInox", "#cfcfd2", "frame", "inox"),
+      variant("frameGold", "#c9a24a", "frame", "gold"),
+      variant("frameBlack", "#2b2b2d", "frame", "black"),
+      variant("frameBronze", "#a07a50", "frame", "bronze"),
+      variant("frameWalnut", WOOD, "frame", "walnut"),
+    ],
+    replace: /^(Jamb_|Lift_Frame_)/,
   },
 ];
 
@@ -211,6 +303,31 @@ export const presets: Preset[] = [
     picks: {
       exterior: "black", floor: "stoneBlack", ceiling: "lightCool", cabinWall: "black", cabinDoor: "black",
       landingDoor: "", handrail: "brass", cabinButtons: "btnBlack", hallButtons: "btnBlack", doorFrame: "black",
+    },
+  },
+  // The templates below are built from finished 3D variants (wood grain, stone and etched mirror included).
+  {
+    code: "walnut",
+    swatches: ["#7a4326", "#dfe1db", "#ffd9a0"],
+    picks: {
+      exterior: "bronze", floor: "floorDB030", ceiling: "ceilDD301", cabinWall: "wallWalnut", cabinDoor: "doorTM030",
+      landingDoor: "landTM030", handrail: "railFS009", cabinButtons: "copBrass", hallButtons: "hallBrass", doorFrame: "frameWalnut",
+    },
+  },
+  {
+    code: "gold",
+    swatches: ["#c9a24a", "#c2c7c8", "#b98a5c"],
+    picks: {
+      exterior: "brass", floor: "floorDB032", ceiling: "ceilDD303", cabinWall: "wallGold", cabinDoor: "doorTM019",
+      landingDoor: "landTM019", handrail: "railFS002", cabinButtons: "copBrass", hallButtons: "hallBrass", doorFrame: "frameGold",
+    },
+  },
+  {
+    code: "mirror",
+    swatches: ["#cfcfd2", "#bbbebb", "#d6e6ff"],
+    picks: {
+      exterior: "inox", floor: "floorDB004", ceiling: "ceilDD102", cabinWall: "wallMirrorEtched", cabinDoor: "doorTM004",
+      landingDoor: "landTM004", handrail: "railFS003", cabinButtons: "copInoxBlue", hallButtons: "hallInox", doorFrame: "frameInox",
     },
   },
 ];

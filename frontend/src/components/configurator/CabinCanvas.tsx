@@ -7,7 +7,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { Selection, Space, ViewId } from "./config";
-import { MODEL_URL, applySelection, disposeModel, prepareModel, setDoors, setSpace } from "./model";
+import { MODEL_URL, applySelection, disposeModel, loadVariants, prepareModel, setDoors, setSpace, variantFiles } from "./model";
 import type { CabinModel } from "./model";
 
 // Units are metres. The lift sits in the lobby wall of the room: the doorway is centred on x = 0 and the cabin
@@ -229,19 +229,33 @@ export default function CabinCanvas({ selection, view, doorsOpen, space, onReady
   const callbacks = useRef({ onReady, onProgress, onError });
   callbacks.current = { onReady, onProgress, onError };
 
-  // Loaded here rather than with useLoader: that caches one shared scene per URL, and the hero's canvas
-  // would then share (and be recoloured by) the one this page edits.
+  // The room file is fetched once; every model (re)build parses its own copy, so nothing is shared with the
+  // hero's canvas or with the previous model, which is disposed when it is replaced.
+  const roomBytes = useRef<Promise<ArrayBuffer> | null>(null);
+  const current = useRef<CabinModel | null>(null);
+
+  // Groups on a 3D variant swap nodes of the room model; the model is rebuilt only when that set changes.
+  const files = useMemo(() => variantFiles(selection), [selection]);
+  const filesKey = JSON.stringify([...files]);
+
   useEffect(() => {
     let cancelled = false;
-    let built: CabinModel | null = null;
-    new GLTFLoader()
-      .loadAsync(MODEL_URL, (e) => {
-        if (e.total) callbacks.current.onProgress?.(e.loaded / e.total);
-      })
-      .then((gltf) => {
-        built = prepareModel(gltf.scene);
+    if (!roomBytes.current) {
+      roomBytes.current = new THREE.FileLoader()
+        .setResponseType("arraybuffer")
+        .loadAsync(MODEL_URL, (e) => {
+          if (e.total) callbacks.current.onProgress?.(e.loaded / e.total);
+        }) as Promise<ArrayBuffer>;
+    }
+    Promise.all([roomBytes.current, loadVariants(files)])
+      .then(async ([bytes, variants]) => {
+        const gltf = await new GLTFLoader().parseAsync(bytes.slice(0), "");
+        const built = prepareModel(gltf.scene, variants);
         if (cancelled) return disposeModel(built);
+        const old = current.current;
+        current.current = built;
         setModel(built);
+        if (old) disposeModel(old);
         callbacks.current.onReady?.();
       })
       .catch(() => {
@@ -249,10 +263,18 @@ export default function CabinCanvas({ selection, view, doorsOpen, space, onReady
       });
     return () => {
       cancelled = true;
-      if (built) disposeModel(built);
-      setModel(null);
     };
-  }, []);
+    // `files` is derived from `filesKey`, which is what decides whether a rebuild is needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesKey]);
+
+  useEffect(
+    () => () => {
+      if (current.current) disposeModel(current.current);
+      current.current = null;
+    },
+    [],
+  );
 
   const start = useRef(VIEWS[view]).current; // the canvas camera is only read at creation; Controls follow `view`
 
