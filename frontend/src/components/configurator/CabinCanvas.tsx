@@ -38,7 +38,7 @@ const VIEWS: Record<ViewId, ViewSpec> = {
   lobby: { pos: [0, 1.5, 3.2], target: [0, 1.15, 0], fov: 50, distance: [1.6, 5.5], azimuth: [-1.0, 1.0], polar: [0.9, 1.7] },
   // a three-quarter view of the lift on its own, from the side of the door
   angle: { pos: [2.6, 1.85, 3.8], target: [0, 1.0, 0], fov: 42, distance: [2.2, 8], azimuth: [-1.2, 1.5], polar: [0.8, 1.75] },
-  // the demo wall with the landing door, frame and call buttons, beside the lift
+  // the demo wall with the landing door, frame and call buttons, beside the lift on its own
   demo: {
     pos: [DEMO_OFFSET.x, 1.5, DEMO_OFFSET.z + 3.0],
     target: [DEMO_OFFSET.x, 1.2, DEMO_OFFSET.z],
@@ -51,6 +51,10 @@ const VIEWS: Record<ViewId, ViewSpec> = {
   panel: { pos: [0.1, 1.42, 0.17], target: [0.575, 1.3, 0.79], fov: 50, distance: [0.35, 1.0], azimuth: [-2.95, -2.1], polar: [1.1, 2.0] },
   room: { pos: [-2.0, 1.7, 7.1], target: [2.2, 1.1, -2.0], fov: 58, distance: [3, 12], azimuth: [-1.4, 0.6], polar: [0.8, 1.7] },
 };
+
+/** In the room the landing door stands in the lobby wall in front of the lift, so its view looks there. */
+const ROOM_DEMO: ViewSpec = { pos: [0, 1.5, 3.4], target: [0, 1.2, 1.12], fov: 50, distance: [1.2, 5.5], azimuth: [-1.0, 1.0], polar: [0.9, 1.7] };
+const viewSpec = (view: ViewId, space: Space) => (view === "demo" && space === "room" ? ROOM_DEMO : VIEWS[view]);
 
 const TWEEN_SECONDS = 0.9;
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -111,7 +115,7 @@ function applyLimits(c: OrbitControls, s: ViewSpec | null) {
 }
 
 /** Orbit controls that glide between the camera presets and keep each one inside its own limits. */
-function Controls({ view }: { view: ViewId }) {
+function Controls({ view, space }: { view: ViewId; space: Space }) {
   const { camera, gl } = useThree();
   const cam = camera as THREE.PerspectiveCamera;
   const controls = useRef<OrbitControls | null>(null);
@@ -143,7 +147,7 @@ function Controls({ view }: { view: ViewId }) {
   useEffect(() => {
     const c = controls.current;
     if (!c) return;
-    const spec = VIEWS[view];
+    const spec = viewSpec(view, space);
     if (!placed.current) {
       placed.current = true;
       cam.position.set(...spec.pos);
@@ -167,7 +171,7 @@ function Controls({ view }: { view: ViewId }) {
       toFov: spec.fov,
       spec,
     };
-  }, [view, cam]);
+  }, [view, space, cam]);
 
   useFrame((_, delta) => {
     const c = controls.current;
@@ -343,7 +347,7 @@ export default function CabinCanvas({ selection, picks, view, doorsOpen, space, 
       <hemisphereLight args={["#fff1d8", "#8a7a66", 0.25]} />
       <CabinLights />
       {model && <Cabin model={model} selection={selection} picks={picks} doorsOpen={doorsOpen} space={space} />}
-      <Controls view={view} />
+      <Controls view={view} space={space} />
     </Canvas>
   );
 }

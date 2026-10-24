@@ -245,6 +245,7 @@ export function Configurator({ email }: { email: string }) {
                     role="radio"
                     aria-checked={preset === p.code}
                     className="cfg__card"
+                    title={m.presets[p.code]}
                     onClick={() => choosePreset(p.code)}
                   >
                     <span className="cfg__dots" aria-hidden="true">
@@ -273,12 +274,13 @@ export function Configurator({ email }: { email: string }) {
                     type="button"
                     role="radio"
                     aria-checked={current === o.code}
-                    className={o.image ? "cfg__card cfg__card--photo" : "cfg__card"}
+                    className="cfg__card"
+                    title={m.options[o.code]}
                     onClick={() => choose(group.id, o.code)}
                   >
                     {o.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img className="cfg__thumb" src={o.image} alt="" loading="lazy" width={56} height={56} />
+                      <img className="cfg__thumb" src={o.image} alt="" loading="lazy" width={120} height={120} />
                     ) : (
                       <i className={o.hide ? "cfg__sw cfg__sw--none" : "cfg__sw"} style={{ background: o.swatch }} aria-hidden="true" />
                     )}

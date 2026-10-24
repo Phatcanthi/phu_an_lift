@@ -126,6 +126,8 @@ export interface CabinModel {
   landing: { left?: THREE.Object3D; right?: THREE.Object3D; leftX: number; rightX: number };
   mirror: Reflector | null;
   space: Space;
+  /** The landing door, frame and call buttons, and the demo wall they stand on beside a lift on its own. */
+  demo: { group: THREE.Group; walls: THREE.Mesh[] };
   /** Meshes that only exist for the room; hidden when `space` is `lift`. */
   roomMeshes: THREE.Mesh[];
 }
@@ -292,15 +294,17 @@ function buildMirror(scene: THREE.Group) {
 }
 
 /**
- * The landing door, its frame and the call buttons are what a visitor sees in the lobby; they would hide the
- * lift's own doorway. They stand on a short demo wall beside the lift instead (local coordinates are the
- * lobby-wall ones, so the group is only offset).
+ * The landing door, its frame and the call buttons are what a visitor sees in the lobby. In the room they stand
+ * where they belong, in the lobby wall right in front of the lift. With the lift on its own they would hide its
+ * doorway, so they move onto a short demo wall beside it (local coordinates are the lobby-wall ones, so the
+ * group is only offset; see setSpace).
  */
 export const DEMO_OFFSET = new THREE.Vector3(2.7, 0, 0.45);
 const DEMO_PARTS = /^(Landing_Door_|Lift_Frame_|Call_|Hall_Lantern)/;
 
 function buildDemoWall(scene: THREE.Group) {
   const demo = new THREE.Group();
+  const walls: THREE.Mesh[] = [];
   demo.name = "Demo_Group";
   demo.position.copy(DEMO_OFFSET);
   for (const node of scene.children.filter((c) => DEMO_PARTS.test(c.name))) demo.add(node);
@@ -320,14 +324,16 @@ function buildDemoWall(scene: THREE.Group) {
     mesh.name = `Demo_Wall_${i}`;
     mesh.position.set(x, y, z);
     demo.add(mesh);
+    walls.push(mesh);
   });
   scene.add(demo);
+  return { group: demo, walls };
 }
 
 export function prepareModel(scene: THREE.Group, variants: Map<Group["id"], THREE.Group> = new Map()): CabinModel {
   applyVariants(scene, variants);
   fixExport(scene);
-  buildDemoWall(scene);
+  const demo = buildDemoWall(scene);
   const slots = buildSlots(scene, groups);
   // Applied to the per-group copy: `clone()` does not carry the shader hook over from the shared material.
   // A floor variant is a finished texture and must not get the marble pattern multiplied onto it.
@@ -350,6 +356,7 @@ export function prepareModel(scene: THREE.Group, variants: Map<Group["id"], THRE
     mirror: buildMirror(scene),
     space: "room",
     roomMeshes,
+    demo,
   };
 }
 
@@ -391,7 +398,11 @@ export function applySelection(model: CabinModel, selection: Selection, picks: F
 export function setSpace(model: CabinModel, space: Space) {
   model.space = space;
   model.roomMeshes.forEach((mesh) => (mesh.visible = space === "room"));
+  model.demo.group.position.copy(space === "room" ? ORIGIN : DEMO_OFFSET);
+  model.demo.walls.forEach((wall) => (wall.visible = space === "lift"));
 }
+
+const ORIGIN = new THREE.Vector3();
 
 export function setDoors(model: CabinModel, open: number) {
   const closed = (1 - open) * DOOR_SLIDE;

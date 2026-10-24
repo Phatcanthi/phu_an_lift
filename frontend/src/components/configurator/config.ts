@@ -69,12 +69,37 @@ export interface Group {
 
 export const VARIANT_BASE = "/models/variants/";
 
+/**
+ * The catalogue photo of a variant (public/images/options, cut from D:/WorkSpace/PhuAnLift/image), by the
+ * variant's folder and file code. Variants made for the site alone (plain finishes, wood walls) have none.
+ */
+const photo = (folder: string, file: string): string | undefined => {
+  const name = ((): string | undefined => {
+    switch (folder) {
+      case "floor":
+        return `floor/${file}`;
+      case "ceiling":
+      case "handrail":
+        return `${folder}/KA-${file}`;
+      case "cabin_door":
+      case "landing_door":
+        return `door/KA-${file}`;
+      case "cop":
+        return /^HCP/.test(file) ? `cop/KA-${file.replace(/A$/, "-A")}` : undefined;
+      case "hall":
+        if (file === "LOPW02") return "hall/LOP-W02";
+        return /^HHP/.test(file) ? `hall/KA-${file}` : undefined;
+    }
+  })();
+  return name && `/images/options/${name}.webp`;
+};
+
 /** Shorthand for a 3D variant option: the file is `<folder>/<folder>_<file>.glb`. */
-const variant = (code: string, swatch: string, folder: string, file: string, image?: string): Option => ({
+const variant = (code: string, swatch: string, folder: string, file: string): Option => ({
   code,
   swatch,
   glb: `${folder}/${folder}_${file}.glb`,
-  image: image && `/images/options/${image}.png`,
+  image: photo(folder, file),
 });
 
 /** Options that only recolour the model: kept so presets and old links still resolve, but not offered. */
@@ -152,12 +177,12 @@ export const groups: Group[] = [
           pattern: "inlay" as const,
         },
       ]),
-      variant("floorDB002", "#adb2a7", "floor", "KA-DB002", "floor/KA-DB002"),
-      variant("floorDB004", "#bbbebb", "floor", "KA-DB004", "floor/KA-DB004"),
-      variant("floorDB013", "#9ca79e", "floor", "KA-DB013", "floor/KA-DB013"),
-      variant("floorDB030", "#dfe1db", "floor", "KA-DB030", "floor/KA-DB030"),
-      variant("floorDB032", "#c2c7c8", "floor", "KA-DB032", "floor/KA-DB032"),
-      variant("floorDB036", "#cdbca1", "floor", "KA-DB036", "floor/KA-DB036"),
+      variant("floorDB002", "#adb2a7", "floor", "KA-DB002"),
+      variant("floorDB004", "#bbbebb", "floor", "KA-DB004"),
+      variant("floorDB013", "#9ca79e", "floor", "KA-DB013"),
+      variant("floorDB030", "#dfe1db", "floor", "KA-DB030"),
+      variant("floorDB032", "#c2c7c8", "floor", "KA-DB032"),
+      variant("floorDB036", "#cdbca1", "floor", "KA-DB036"),
       variant("floorDB003", "#e9a58b", "floor", "KA-DB003"),
       variant("floorDB005", "#efe4cc", "floor", "KA-DB005"),
       variant("floorDB012", "#e8c9ae", "floor", "KA-DB012"),
@@ -180,12 +205,12 @@ export const groups: Group[] = [
         { code: "lightWarm", swatch: "#ffd9a0", light: "#ffd9a0" },
         { code: "lightCool", swatch: "#d6e6ff", light: "#d6e6ff" },
       ]),
-      variant("ceilDD101", "#cfcfd2", "ceiling", "DD101", "ceiling/KA-DD101"),
-      variant("ceilDD102", "#b4b6ba", "ceiling", "DD102", "ceiling/KA-DD102"),
-      variant("ceilDD201", "#2b2b30", "ceiling", "DD201", "ceiling/KA-DD201"),
-      variant("ceilDD301", WOOD, "ceiling", "DD301", "ceiling/KA-DD301"),
-      variant("ceilDD303", "#b98a5c", "ceiling", "DD303", "ceiling/KA-DD303"),
-      variant("ceilDD304", "#d9a08e", "ceiling", "DD304", "ceiling/KA-DD304"),
+      variant("ceilDD101", "#cfcfd2", "ceiling", "DD101"),
+      variant("ceilDD102", "#b4b6ba", "ceiling", "DD102"),
+      variant("ceilDD201", "#2b2b30", "ceiling", "DD201"),
+      variant("ceilDD301", WOOD, "ceiling", "DD301"),
+      variant("ceilDD303", "#b98a5c", "ceiling", "DD303"),
+      variant("ceilDD304", "#d9a08e", "ceiling", "DD304"),
       variant("ceilDD103", "#b4b6ba", "ceiling", "DD103"),
       variant("ceilDD105", "#b4b6ba", "ceiling", "DD105"),
       variant("ceilDD202", "#f4f4f4", "ceiling", "DD202"),
@@ -228,11 +253,11 @@ export const groups: Group[] = [
     parts: [{ nodes: /^(Car_Door_[LR](_\d+)?|Door_Sill)$/, role: "surface" }],
     options: [
       ...hidden(metals),
-      variant("doorTM004", "#8f9195", "cabin_door", "TM004", "door/KA-TM004"),
-      variant("doorTM013", "#b9bcc0", "cabin_door", "TM013", "door/KA-TM013"),
-      variant("doorTM019", "#d9b94a", "cabin_door", "TM019", "door/KA-TM019"),
-      variant("doorTM028", "#8c7a66", "cabin_door", "TM028", "door/KA-TM028"),
-      variant("doorTM030", "#8a4a2b", "cabin_door", "TM030", "door/KA-TM030"),
+      variant("doorTM004", "#8f9195", "cabin_door", "TM004"),
+      variant("doorTM013", "#b9bcc0", "cabin_door", "TM013"),
+      variant("doorTM019", "#d9b94a", "cabin_door", "TM019"),
+      variant("doorTM028", "#8c7a66", "cabin_door", "TM028"),
+      variant("doorTM030", "#8a4a2b", "cabin_door", "TM030"),
       ...newDoors.map(([c, sw]) => variant(`door${c}`, sw, "cabin_door", c)),
     ],
     replace: /^(Car_Door_[LR]|Door_Sill)/,
@@ -243,11 +268,11 @@ export const groups: Group[] = [
     parts: [{ nodes: /^Landing_Door_[LR](_\d+)?$/, role: "surface" }],
     options: [
       { code: "landingNone", swatch: "transparent", hide: true },
-      variant("landTM004", "#8f9195", "landing_door", "TM004", "door/KA-TM004"),
-      variant("landTM013", "#b9bcc0", "landing_door", "TM013", "door/KA-TM013"),
-      variant("landTM019", "#d9b94a", "landing_door", "TM019", "door/KA-TM019"),
-      variant("landTM028", "#8c7a66", "landing_door", "TM028", "door/KA-TM028"),
-      variant("landTM030", "#8a4a2b", "landing_door", "TM030", "door/KA-TM030"),
+      variant("landTM004", "#8f9195", "landing_door", "TM004"),
+      variant("landTM013", "#b9bcc0", "landing_door", "TM013"),
+      variant("landTM019", "#d9b94a", "landing_door", "TM019"),
+      variant("landTM028", "#8c7a66", "landing_door", "TM028"),
+      variant("landTM030", "#8a4a2b", "landing_door", "TM030"),
       ...newDoors.map(([c, sw]) => variant(`land${c}`, sw, "landing_door", c)),
     ],
     replace: /^Landing_Door_/,
@@ -258,10 +283,10 @@ export const groups: Group[] = [
     options: [
       ...hidden(metals),
       { code: "none", swatch: "transparent", hide: true },
-      variant("railFS001", "#cfcfd2", "handrail", "FS001", "handrail/KA-FS001"),
-      variant("railFS002", "#c9a24a", "handrail", "FS002", "handrail/KA-FS002"),
-      variant("railFS003", "#b9bbbf", "handrail", "FS003", "handrail/KA-FS003"),
-      variant("railFS009", WOOD, "handrail", "FS009", "handrail/KA-FS009"),
+      variant("railFS001", "#cfcfd2", "handrail", "FS001"),
+      variant("railFS002", "#c9a24a", "handrail", "FS002"),
+      variant("railFS003", "#b9bbbf", "handrail", "FS003"),
+      variant("railFS009", WOOD, "handrail", "FS009"),
       variant("railFS005", "#d7d8dc", "handrail", "FS005"),
       variant("railFS008", "#d7d8dc", "handrail", "FS008"),
       variant("railFS010", "#c9a24a", "handrail", "FS010"),
