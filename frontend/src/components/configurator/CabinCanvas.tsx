@@ -6,8 +6,9 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { Selection, Space, ViewId } from "./config";
-import { MODEL_URL, applySelection, disposeModel, loadVariants, prepareModel, setDoors, setSpace, variantFiles } from "./model";
+import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
+import type { FinishPicks, Selection, Space, ViewId } from "./config";
+import { DEMO_OFFSET, MODEL_URL, applySelection, disposeModel, loadVariants, prepareModel, setDoors, setSpace, variantFiles } from "./model";
 import type { CabinModel } from "./model";
 
 // Units are metres. The lift sits in the lobby wall of the room: the doorway is centred on x = 0 and the cabin
@@ -37,6 +38,17 @@ const VIEWS: Record<ViewId, ViewSpec> = {
   lobby: { pos: [0, 1.5, 3.2], target: [0, 1.15, 0], fov: 50, distance: [1.6, 5.5], azimuth: [-1.0, 1.0], polar: [0.9, 1.7] },
   // a three-quarter view of the lift on its own, from the side of the door
   angle: { pos: [2.6, 1.85, 3.8], target: [0, 1.0, 0], fov: 42, distance: [2.2, 8], azimuth: [-1.2, 1.5], polar: [0.8, 1.75] },
+  // the demo wall with the landing door, frame and call buttons, beside the lift
+  demo: {
+    pos: [DEMO_OFFSET.x, 1.5, DEMO_OFFSET.z + 3.0],
+    target: [DEMO_OFFSET.x, 1.2, DEMO_OFFSET.z],
+    fov: 50,
+    distance: [1.4, 5.5],
+    azimuth: [-1.0, 1.0],
+    polar: [0.9, 1.7],
+  },
+  // inside the cabin, close to the car operating panel on the right front return (x 0.575, face at z 0.792)
+  panel: { pos: [0.1, 1.42, 0.17], target: [0.575, 1.3, 0.79], fov: 50, distance: [0.35, 1.0], azimuth: [-2.95, -2.1], polar: [1.1, 2.0] },
   room: { pos: [-2.0, 1.7, 7.1], target: [2.2, 1.1, -2.0], fov: 58, distance: [3, 12], azimuth: [-1.4, 0.6], polar: [0.8, 1.7] },
 };
 
@@ -58,6 +70,31 @@ function Environment() {
     };
   }, [gl, scene]);
   return null;
+}
+
+/**
+ * Real light inside the cabin, so the 3D parts (ceiling cut-outs, door reliefs, handrails) are shaded by their
+ * shape instead of glowing flat: a soft panel under the ceiling lights the walls, floor and doors, and a weak
+ * bounce from the floor lights the ceiling's underside. The baked room has a black base colour and ignores both.
+ */
+function CabinLights() {
+  const [panel, bounce] = useMemo(() => {
+    RectAreaLightUniformsLib.init();
+    const top = new THREE.RectAreaLight("#fff3e2", 3.2, 1.2, 1.4);
+    top.position.set(0, 2.34, 0);
+    top.lookAt(0, 0, 0);
+    // a floor-sized panel facing up stands in for the light the floor throws back
+    const floor = new THREE.RectAreaLight("#f4e6d2", 1.4, 1.3, 1.5);
+    floor.position.set(0, 0.05, 0);
+    floor.lookAt(0, 2.4, 0);
+    return [top, floor];
+  }, []);
+  return (
+    <>
+      <primitive object={panel} />
+      <primitive object={bounce} />
+    </>
+  );
 }
 
 /** Applies a preset's limits; null frees them (while the camera glides). */
@@ -186,21 +223,31 @@ function Ground() {
   );
 }
 
-function Cabin({ model, selection, doorsOpen, space }: { model: CabinModel; selection: Selection; doorsOpen: boolean; space: Space }) {
+function Cabin({
+  model,
+  selection,
+  picks,
+  doorsOpen,
+  space,
+}: {
+  model: CabinModel;
+  selection: Selection;
+  picks: FinishPicks;
+  doorsOpen: boolean;
+  space: Space;
+}) {
   const open = useRef(1);
 
   useEffect(() => {
     setSpace(model, space);
-    applySelection(model, selection);
-  }, [model, selection, space]);
+    applySelection(model, selection, picks);
+  }, [model, selection, picks, space]);
 
   useFrame((_, delta) => {
     const target = doorsOpen ? 1 : 0;
     open.current += (target - open.current) * (1 - Math.exp(-Math.min(delta, 0.05) * 5));
     if (Math.abs(target - open.current) < 0.001) open.current = target;
     setDoors(model, open.current);
-    // The reflection costs a second render of the scene; skip it while the doors are shut.
-    if (model.mirror) model.mirror.visible = open.current > 0.01;
   });
 
   return (
@@ -214,6 +261,7 @@ function Cabin({ model, selection, doorsOpen, space }: { model: CabinModel; sele
 
 type Props = {
   selection: Selection;
+  picks: FinishPicks;
   view: ViewId;
   doorsOpen: boolean;
   space: Space;
@@ -223,7 +271,7 @@ type Props = {
   label: string;
 };
 
-export default function CabinCanvas({ selection, view, doorsOpen, space, onReady, onProgress, onError, label }: Props) {
+export default function CabinCanvas({ selection, picks, view, doorsOpen, space, onReady, onProgress, onError, label }: Props) {
   const [model, setModel] = useState<CabinModel | null>(null);
   // The callbacks may change on every render; the load must not restart because of that.
   const callbacks = useRef({ onReady, onProgress, onError });
@@ -280,7 +328,7 @@ export default function CabinCanvas({ selection, view, doorsOpen, space, onReady
 
   return (
     <Canvas
-      dpr={[1, 1.6]}
+      dpr={[1, 2]}
       camera={{ fov: start.fov, near: 0.05, far: 40, position: start.pos }}
       gl={{ antialias: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
@@ -293,7 +341,8 @@ export default function CabinCanvas({ selection, view, doorsOpen, space, onReady
       <Environment />
       <ambientLight intensity={0.1} />
       <hemisphereLight args={["#fff1d8", "#8a7a66", 0.25]} />
-      {model && <Cabin model={model} selection={selection} doorsOpen={doorsOpen} space={space} />}
+      <CabinLights />
+      {model && <Cabin model={model} selection={selection} picks={picks} doorsOpen={doorsOpen} space={space} />}
       <Controls view={view} />
     </Canvas>
   );
