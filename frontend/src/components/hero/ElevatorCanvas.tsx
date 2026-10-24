@@ -11,6 +11,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { applyMarble } from "../marbleFloor";
 import { finishes } from "./cabinStyles";
 import { INSIDE_THRESHOLD } from "./sceneState";
 import type { SceneState } from "./sceneState";
@@ -130,6 +131,8 @@ function RoomModel({
       // next to the real-time metals, the white cabin floor (lit from right above) most of all.
       if (m.name.endsWith("_Baked")) m.emissiveIntensity *= m.name === "Elevator_Marble_Baked" ? 0.3 : 0.7;
       if (m.name === "Elevator_CeilingGlow") m.emissiveIntensity *= 0.6;
+      // The baked marble floor is a tiny, blown-out lightmap tile with no visible veins; draw them on top.
+      if (m.name === "Elevator_Marble_Baked") applyMarble(m);
     });
 
     // Blender's default cube was left hidden in the .blend and still exported; it sits inside the cabin.

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
+import { applyMarble } from "../marbleFloor";
 import { groups } from "./config";
 import type { Group, GroupId, Part, Selection } from "./config";
 
@@ -124,6 +125,8 @@ function buildMirror(scene: THREE.Group) {
 export function prepareModel(scene: THREE.Group): CabinModel {
   fixExport(scene);
   const slots = buildSlots(scene, groups);
+  // Applied to the per-group copy: `clone()` does not carry the shader hook over from the shared material.
+  slots.get("floor")?.forEach((s) => applyMarble(s.material));
   const left = scene.getObjectByName("Car_Door_L");
   const right = scene.getObjectByName("Car_Door_R");
   return {
