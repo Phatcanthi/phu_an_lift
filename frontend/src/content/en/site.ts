@@ -20,6 +20,7 @@ export const navItems = [
   { label: "Technology", href: "/#technology", section: "technology" },
   { label: "Products", href: "/products", section: "products" },
   { label: "Cabin", href: "/#cabins", section: "cabins" },
+  { label: "Customize", href: "/customize", section: "customize" },
   { label: "Projects", href: "/projects", section: "projects" },
   { label: "Services", href: "/#services", section: "services" },
   { label: "Contact", href: "/#contact", section: "contact" },

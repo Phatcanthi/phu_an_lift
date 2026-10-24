@@ -21,6 +21,7 @@ export const navItems = [
   { label: "Công nghệ", href: "/#technology", section: "technology" },
   { label: "Sản phẩm", href: "/products", section: "products" },
   { label: "Cabin", href: "/#cabins", section: "cabins" },
+  { label: "Tùy chỉnh", href: "/customize", section: "customize" },
   { label: "Dự án", href: "/projects", section: "projects" },
   { label: "Dịch vụ", href: "/#services", section: "services" },
   { label: "Liên hệ", href: "/#contact", section: "contact" },
