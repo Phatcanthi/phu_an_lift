@@ -1069,3 +1069,15 @@ html:has(.nav.is-solid:not(.is-hidden)) .browser__bar { top: 72px; }
   .lgn__doors { display: none; }
   .lgn *, .lgn *::before, .lgn *::after { animation: none !important; transition-duration: 0.01ms !important; }
 }
+
+/* Customizer: a photo of the finished model instead of a colour dot, and the finish chips below the styles */
+.cfg__card--photo { align-items: center; }
+.cfg__thumb { flex: none; display: block; width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--surface-highest); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.cfg__finish { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(78, 70, 57, 0.4); }
+.cfg__subtitle { margin-bottom: 6px; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary); }
+.cfg__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cfg__chip { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border: 0; border-radius: 999px; background: var(--surface-high); color: var(--on-surface); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(229, 226, 227, 0.12); }
+.cfg__chip:hover { background: var(--surface-highest); }
+.cfg__chip[aria-checked="true"] { background: #3a3220; box-shadow: inset 0 0 0 2px var(--primary); }
+.cfg__chip .cfg__sw { width: 22px; height: 22px; }
+.cfg__chip .cfg__name { padding-right: 0; font-size: 12px; }

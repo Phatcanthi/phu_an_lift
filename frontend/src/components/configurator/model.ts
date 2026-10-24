@@ -2,8 +2,10 @@ import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { applyMarble, setInlay } from "../marbleFloor";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { VARIANT_BASE, groups } from "./config";
-import type { Group, GroupId, Option, Part, Selection, Space } from "./config";
+import { VARIANT_BASE, finishes, groups } from "./config";
+import type { FinishPicks, Group, GroupId, Option, Part, Selection, Space } from "./config";
+
+const FINISH = new THREE.Color();
 
 export const MODEL_URL = "/models/room.glb";
 
@@ -18,7 +20,7 @@ type Standard = THREE.MeshStandardMaterial;
  * landing call buttons. Every other mesh belongs to the room and is hidden in the lift-only view.
  */
 const LIFT_PART =
-  /^(Back_|Front_(Header|Return)|Side_Seam|Car_Door|Ceiling_(Mirror|Panel|Shell)|COP_|Door_Sill|Downlight_|Floor(_\d+)?$|Handrail_|Indicator_|Jamb_|Skirting_|Wall_(Back|Left|Right)$|Lift_Frame_|Call_|Landing_Door_)/;
+  /^(Back_|Front_(Header|Return)|Side_Seam|Car_Door|Ceiling_|COP_|Door_Sill|Downlight_|Floor(_\d+)?$|Handrail_|Indicator_|Jamb_|Skirting_|Wall_(Back|Left|Right)$|Lift_Frame_|Call_|Hall_Lantern|Landing_Door_|Demo_)/;
 export const isLiftPart = (name: string) => LIFT_PART.test(name);
 
 /** The option chosen for a group; an unknown or empty code falls back to the group's first option. */
@@ -61,8 +63,13 @@ export async function loadVariants(files: Map<Group["id"], string>) {
 
 /**
  * The variants are lit by the scene lights alone, while the room model carries its light baked into the
- * emissive channel, so they would look dark beside it. Give them a share of their own colour as emissive light.
+ * emissive channel, so they would look dark beside it. Give them a small share of their own colour as emissive
+ * light; the rest comes from the cabin lights (CabinCanvas), which keep their relief and bevels visible.
  */
+const EMISSIVE_SHARE = { metal: 0.12, matte: 0.3 };
+/** Clamped by three.js to what the GPU supports. */
+const ANISOTROPY = 8;
+
 function liftVariant(root: THREE.Object3D) {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -70,6 +77,8 @@ function liftVariant(root: THREE.Object3D) {
     for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as Standard[]) {
       if (m.userData.lit) continue;
       m.userData.lit = true;
+      // floors and door faces are mostly seen at a glancing angle, where plain mipmapping blurs them
+      for (const t of [m.map, m.normalMap, m.roughnessMap, m.metalnessMap]) if (t) t.anisotropy = ANISOTROPY;
       if (m.emissive.r + m.emissive.g + m.emissive.b > 0.01) {
         m.emissiveIntensity *= 0.4; // lamps, button rings and display digits already glow
         continue;
@@ -80,7 +89,7 @@ function liftVariant(root: THREE.Object3D) {
       } else {
         m.emissive.copy(m.color);
       }
-      m.emissiveIntensity = m.metalness > 0.5 ? 0.3 : 0.6;
+      m.emissiveIntensity = m.metalness > 0.5 ? EMISSIVE_SHARE.metal : EMISSIVE_SHARE.matte;
     }
   });
 }
@@ -273,8 +282,8 @@ function buildMirror(scene: THREE.Group) {
     tint.multiply(hue.multiplyScalar(1 / Math.max(hue.r, hue.g, hue.b, 1e-3)));
   }
   const reflector = new Reflector(new THREE.PlaneGeometry(size.x, size.y), {
-    textureWidth: 512,
-    textureHeight: 1024,
+    textureWidth: 768,
+    textureHeight: 1536,
     color: tint,
   });
   reflector.position.set((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.max.z + 0.002);
@@ -282,9 +291,43 @@ function buildMirror(scene: THREE.Group) {
   return reflector;
 }
 
+/**
+ * The landing door, its frame and the call buttons are what a visitor sees in the lobby; they would hide the
+ * lift's own doorway. They stand on a short demo wall beside the lift instead (local coordinates are the
+ * lobby-wall ones, so the group is only offset).
+ */
+export const DEMO_OFFSET = new THREE.Vector3(2.7, 0, 0.45);
+const DEMO_PARTS = /^(Landing_Door_|Lift_Frame_|Call_|Hall_Lantern)/;
+
+function buildDemoWall(scene: THREE.Group) {
+  const demo = new THREE.Group();
+  demo.name = "Demo_Group";
+  demo.position.copy(DEMO_OFFSET);
+  for (const node of scene.children.filter((c) => DEMO_PARTS.test(c.name))) demo.add(node);
+
+  const plaster = new THREE.MeshStandardMaterial({ color: 0xcfcac2, emissive: 0xcfcac2, emissiveIntensity: 0.5, roughness: 0.95 });
+  const backing = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 1 });
+  // [centre x, centre y, width, height, depth, centre z]: two pillars and a header around the 0.94 m doorway;
+  // the pillars reach out to x = +-1.3 so the call plate (x 0.55-0.65) sits on the wall
+  const pieces: [number, number, number, number, number, number, THREE.Material][] = [
+    [-0.885, 1.4, 0.83, 2.8, 0.12, 1.06, plaster],
+    [0.885, 1.4, 0.83, 2.8, 0.12, 1.06, plaster],
+    [0, 2.46, 0.94, 0.68, 0.12, 1.06, plaster],
+    [0, 1.06, 0.94, 2.12, 0.02, 0.99, backing],
+  ];
+  pieces.forEach(([x, y, w, h, d, z, material], i) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.name = `Demo_Wall_${i}`;
+    mesh.position.set(x, y, z);
+    demo.add(mesh);
+  });
+  scene.add(demo);
+}
+
 export function prepareModel(scene: THREE.Group, variants: Map<Group["id"], THREE.Group> = new Map()): CabinModel {
   applyVariants(scene, variants);
   fixExport(scene);
+  buildDemoWall(scene);
   const slots = buildSlots(scene, groups);
   // Applied to the per-group copy: `clone()` does not carry the shader hook over from the shared material.
   // A floor variant is a finished texture and must not get the marble pattern multiplied onto it.
@@ -310,7 +353,7 @@ export function prepareModel(scene: THREE.Group, variants: Map<Group["id"], THRE
   };
 }
 
-export function applySelection(model: CabinModel, selection: Selection) {
+export function applySelection(model: CabinModel, selection: Selection, picks: FinishPicks = {}) {
   for (const group of groups) {
     const option = optionFor(group, selection);
     if (!option) continue;
@@ -318,7 +361,17 @@ export function applySelection(model: CabinModel, selection: Selection) {
       const { material: m } = slot;
       slot.meshes.forEach((mesh) => (mesh.visible = !option.hide && (model.space === "room" || isLiftPart(mesh.name))));
       setInlay(m, option.pattern === "inlay");
-      if (option.glb) continue; // a finished 3D variant keeps its own materials and is never tinted
+      if (option.glb) {
+        // A finished 3D style keeps its own materials; a finish only multiplies its colour.
+        m.color.copy(slot.color0);
+        m.emissive.copy(slot.emissive0);
+        const finish = finishes.find((f) => f.code === picks[group.id])?.tint;
+        if (finish && slot.role === "surface") {
+          m.color.multiply(FINISH.set(finish));
+          if (m.emissive.r + m.emissive.g + m.emissive.b > 0.01) m.emissive.multiply(FINISH);
+        }
+        continue;
+      }
       const colour = slot.role === "surface" ? option.tint : option.light;
       m.color.copy(slot.color0);
       m.emissive.copy(slot.emissive0);
