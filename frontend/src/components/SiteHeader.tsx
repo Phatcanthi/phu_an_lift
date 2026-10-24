@@ -98,14 +98,13 @@ export function SiteHeader({ navItems, hotline, name }: { navItems: NavItem[]; h
         <a className="btn btn--outline nav__cta" href={tel(hotline)}>
           {m.call(hotline)}
         </a>
-        {/* the dashboard lives outside the localized site, so this link is not locale-prefixed */}
-        <a className="nav__login label" href="/admin/login" aria-label={m.login}>
+        <Link className="nav__login label" href="/login" aria-label={m.login}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <circle cx="12" cy="8" r="3.5" />
             <path d="M5 20c0-3.6 3-6 7-6s7 2.4 7 6" />
           </svg>
           <span className="nav__logintext">{m.login}</span>
-        </a>
+        </Link>
         <a
           className="nav__lang label"
           href={switchHref}
@@ -142,9 +141,9 @@ export function SiteHeader({ navItems, hotline, name }: { navItems: NavItem[]; h
           {m.call(hotline)}
         </a>
         <div className="menu__row">
-          <a className="btn btn--ghost" href="/admin/login">
+          <Link className="btn btn--ghost" href="/login" onClick={() => setOpen(false)}>
             {m.login}
-          </a>
+          </Link>
           <a className="nav__lang label" href={switchHref} hrefLang={other} lang={other} aria-label={m.switchAria} onClick={switchLocale}>
             {m.switchLabel}
           </a>

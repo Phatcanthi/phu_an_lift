@@ -47,7 +47,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const session = getSession();
-    if (!session) router.replace("/admin/login");
+    if (!session) router.replace("/login");
     else setEmail(session);
   }, [router]);
 
@@ -57,7 +57,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const signOut = () => {
     endSession();
-    router.replace("/admin/login");
+    router.replace("/login");
   };
 
   return (

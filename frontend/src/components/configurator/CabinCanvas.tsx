@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { Selection, ViewId } from "./config";
-import { MODEL_URL, applySelection, disposeModel, prepareModel, setDoors } from "./model";
+import type { Selection, Space, ViewId } from "./config";
+import { MODEL_URL, applySelection, disposeModel, prepareModel, setDoors, setSpace } from "./model";
 import type { CabinModel } from "./model";
 
 // Units are metres. The lift sits in the lobby wall of the room: the doorway is centred on x = 0 and the cabin
@@ -35,6 +35,8 @@ const VIEWS: Record<ViewId, ViewSpec> = {
     look360: true,
   },
   lobby: { pos: [0, 1.5, 3.2], target: [0, 1.15, 0], fov: 50, distance: [1.6, 5.5], azimuth: [-1.0, 1.0], polar: [0.9, 1.7] },
+  // a three-quarter view of the lift on its own, from the side of the door
+  angle: { pos: [2.6, 1.85, 3.8], target: [0, 1.0, 0], fov: 42, distance: [2.2, 8], azimuth: [-1.2, 1.5], polar: [0.8, 1.75] },
   room: { pos: [-2.0, 1.7, 7.1], target: [2.2, 1.1, -2.0], fov: 58, distance: [3, 12], azimuth: [-1.4, 0.6], polar: [0.8, 1.7] },
 };
 
@@ -152,10 +154,45 @@ function Controls({ view }: { view: ViewId }) {
   return null;
 }
 
-function Cabin({ model, selection, doorsOpen }: { model: CabinModel; selection: Selection; doorsOpen: boolean }) {
+/** A pool of light and a soft shadow under the lift, so it does not float in the dark when the room is hidden. */
+function Ground() {
+  const map = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    const pool = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    pool.addColorStop(0, "rgba(92, 86, 76, 0.95)");
+    pool.addColorStop(0.45, "rgba(52, 49, 44, 0.7)");
+    pool.addColorStop(1, "rgba(11, 11, 12, 0)");
+    g.fillStyle = pool;
+    g.fillRect(0, 0, 256, 256);
+    const shade = g.createRadialGradient(128, 128, 0, 128, 128, 56);
+    shade.addColorStop(0, "rgba(0, 0, 0, 0.75)");
+    shade.addColorStop(1, "rgba(0, 0, 0, 0)");
+    g.fillStyle = shade;
+    g.fillRect(0, 0, 256, 256);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+  useEffect(() => () => map?.dispose(), [map]);
+  if (!map) return null;
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.065, 0]}>
+      <planeGeometry args={[7, 7]} />
+      <meshBasicMaterial map={map} transparent depthWrite={false} toneMapped={false} />
+    </mesh>
+  );
+}
+
+function Cabin({ model, selection, doorsOpen, space }: { model: CabinModel; selection: Selection; doorsOpen: boolean; space: Space }) {
   const open = useRef(1);
 
-  useEffect(() => applySelection(model, selection), [model, selection]);
+  useEffect(() => {
+    setSpace(model, space);
+    applySelection(model, selection);
+  }, [model, selection, space]);
 
   useFrame((_, delta) => {
     const target = doorsOpen ? 1 : 0;
@@ -170,6 +207,7 @@ function Cabin({ model, selection, doorsOpen }: { model: CabinModel; selection: 
     <>
       <primitive object={model.scene} />
       {model.mirror && <primitive object={model.mirror} />}
+      {space === "lift" && <Ground />}
     </>
   );
 }
@@ -178,13 +216,14 @@ type Props = {
   selection: Selection;
   view: ViewId;
   doorsOpen: boolean;
+  space: Space;
   onReady?: () => void;
   onProgress?: (ratio: number) => void;
   onError?: () => void;
   label: string;
 };
 
-export default function CabinCanvas({ selection, view, doorsOpen, onReady, onProgress, onError, label }: Props) {
+export default function CabinCanvas({ selection, view, doorsOpen, space, onReady, onProgress, onError, label }: Props) {
   const [model, setModel] = useState<CabinModel | null>(null);
   // The callbacks may change on every render; the load must not restart because of that.
   const callbacks = useRef({ onReady, onProgress, onError });
@@ -232,7 +271,7 @@ export default function CabinCanvas({ selection, view, doorsOpen, onReady, onPro
       <Environment />
       <ambientLight intensity={0.1} />
       <hemisphereLight args={["#fff1d8", "#8a7a66", 0.25]} />
-      {model && <Cabin model={model} selection={selection} doorsOpen={doorsOpen} />}
+      {model && <Cabin model={model} selection={selection} doorsOpen={doorsOpen} space={space} />}
       <Controls view={view} />
     </Canvas>
   );

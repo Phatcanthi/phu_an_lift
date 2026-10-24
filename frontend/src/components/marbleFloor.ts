@@ -3,6 +3,9 @@ import * as THREE from "three";
 // The cabin floor's marble is baked into a ~150 px tile of room.glb's lightmap atlas and is blown out to white,
 // so its veins are lost. This draws a seamless marble pattern and multiplies it onto the baked light, in world
 // space, leaving the baked light gradient intact. Shared by the hero and the customizer.
+//
+// The customizer can also switch the floor to a ready-made inlay texture (tools/blender/make_floor_inlay.py),
+// stretched over the floor's exact footprint.
 
 const SIZE = 1024;
 /** Metres covered by one repeat of the pattern. */
@@ -86,15 +89,55 @@ function marbleTexture() {
   return tex;
 }
 
+/** Footprint and image of an inlay floor; the image's top edge is the back (-z) edge of the footprint. */
+export interface Inlay {
+  url: string;
+  box: THREE.Box3;
+}
+
+interface MarbleState {
+  uniforms: {
+    marbleMap: { value: THREE.Texture };
+    marbleGain: { value: number };
+    inlayMap: { value: THREE.Texture };
+    inlayMix: { value: number };
+    inlayRect: { value: THREE.Vector4 };
+  };
+  inlay?: Inlay;
+  loading: boolean;
+}
+
+const STATE = "marble";
+
 /**
  * Multiplies the marble pattern onto the material's emissive (baked) light. `gain` makes up for the
- * pattern's average darkening, so the floor keeps about the brightness it had.
+ * pattern's average darkening, so the floor keeps about the brightness it had. Pass `inlay` to let
+ * `setInlay` switch to that picture later.
  */
-export function applyMarble(material: THREE.MeshStandardMaterial, gain = 1.3) {
-  const map = marbleTexture();
+export function applyMarble(material: THREE.MeshStandardMaterial, gain = 1.3, inlay?: Inlay) {
+  const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  white.needsUpdate = true;
+  const rect = new THREE.Vector4(0, 0, 1, 1);
+  if (inlay) {
+    const size = inlay.box.getSize(new THREE.Vector3());
+    rect.set(inlay.box.min.x, inlay.box.min.z, 1 / size.x, 1 / size.z);
+  }
+  const state: MarbleState = {
+    uniforms: {
+      marbleMap: { value: marbleTexture() },
+      marbleGain: { value: gain },
+      inlayMap: { value: white },
+      inlayMix: { value: 0 },
+      inlayRect: { value: rect },
+    },
+    inlay,
+    loading: false,
+  };
+  material.userData[STATE] = state;
+
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.marbleMap = { value: map };
-    shader.uniforms.marbleGain = { value: gain };
+    // the uniform objects are shared, so later changes to their `.value` reach the compiled program
+    Object.assign(shader.uniforms, state.uniforms);
     shader.vertexShader = shader.vertexShader
       .replace("void main() {", "varying vec2 vMarbleUv;\nvoid main() {")
       .replace(
@@ -103,13 +146,37 @@ export function applyMarble(material: THREE.MeshStandardMaterial, gain = 1.3) {
         vMarbleUv = (modelMatrix * vec4(transformed, 1.0)).xz / ${TILE.toFixed(2)};`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "uniform sampler2D marbleMap;\nuniform float marbleGain;\nvarying vec2 vMarbleUv;\nvoid main() {")
+      .replace(
+        "void main() {",
+        "uniform sampler2D marbleMap;\nuniform sampler2D inlayMap;\nuniform float marbleGain;\nuniform float inlayMix;\nuniform vec4 inlayRect;\nvarying vec2 vMarbleUv;\nvoid main() {",
+      )
       .replace(
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
-        totalEmissiveRadiance *= texture2D(marbleMap, vMarbleUv).rgb * marbleGain;`,
+        vec3 stone = texture2D(marbleMap, vMarbleUv).rgb;
+        if (inlayMix > 0.5) {
+          vec2 world = vMarbleUv * ${TILE.toFixed(2)};
+          stone = texture2D(inlayMap, vec2((world.x - inlayRect.x) * inlayRect.z, 1.0 - (world.y - inlayRect.y) * inlayRect.w)).rgb;
+        }
+        totalEmissiveRadiance *= stone * marbleGain;`,
       );
   };
   material.customProgramCacheKey = () => "marble-floor";
   material.needsUpdate = true;
+}
+
+/** Shows the inlay picture instead of the tiled marble on a material prepared by `applyMarble`. No-op otherwise. */
+export function setInlay(material: THREE.Material, on: boolean) {
+  const state = material.userData[STATE] as MarbleState | undefined;
+  if (!state) return;
+  state.uniforms.inlayMix.value = on && state.inlay ? 1 : 0;
+  if (on && state.inlay && !state.loading) {
+    // fetched on first use: most visitors never pick it
+    state.loading = true;
+    new THREE.TextureLoader().load(state.inlay.url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      state.uniforms.inlayMap.value = tex;
+    });
+  }
 }

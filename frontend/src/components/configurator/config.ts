@@ -18,7 +18,10 @@ export type GroupId =
   | "hallButtons"
   | "doorFrame";
 
-export type ViewId = "inside" | "lobby" | "room";
+export type ViewId = "inside" | "lobby" | "room" | "angle";
+
+/** `room` shows the whole living room around the lift; `lift` shows only the lift. */
+export type Space = "room" | "lift";
 
 export interface Option {
   code: string;
@@ -30,6 +33,8 @@ export interface Option {
   light?: string;
   /** Hides the group's meshes (an optional fitting such as the handrail). */
   hide?: boolean;
+  /** Draws a ready-made pattern (public/textures) instead of tinting the model's own surface. */
+  pattern?: "inlay";
 }
 
 export interface Part {
@@ -38,6 +43,11 @@ export interface Part {
   /** Tested against the material name the node has in the file. */
   materials?: RegExp;
   role: "surface" | "light";
+  /**
+   * Only the faces of the matching boxes that point away from the cabin. The cabin walls are 4 cm thick boxes
+   * whose inner and outer faces share one mesh, so this splits them to colour the outside on its own.
+   */
+  outer?: boolean;
 }
 
 export interface Group {
@@ -71,13 +81,9 @@ const buttons: Option[] = [
 export const groups: Group[] = [
   {
     id: "exterior",
-    parts: [{ nodes: /^(Wall_|Shaft_)/, materials: /^Room_Wall_Baked$/, role: "surface" }],
-    options: [
-      { code: "wallCream", swatch: "#e8dfd0" },
-      { code: "wallGrey", swatch: "#b9c2c4", tint: "#b9c2c4" },
-      { code: "wallBlush", swatch: "#d9b9a0", tint: "#d9b9a0" },
-      { code: "wallSage", swatch: "#a9b5a0", tint: "#a9b5a0" },
-    ],
+    // the outside of the cabin: its three walls and the panels either side of the door
+    parts: [{ nodes: /^(Wall_(Back|Left|Right)|Front_(Header|Return_[LR]))$/, role: "surface", outer: true }],
+    options: metals,
   },
   {
     id: "floor",
@@ -87,6 +93,11 @@ export const groups: Group[] = [
       { code: "stoneGrey", swatch: "#9a9ca0", tint: "#9a9ca0" },
       { code: "stoneBlack", swatch: "#3a3a3e", tint: "#4a4a4e" },
       { code: "stoneWarm", swatch: "#c8a77e", tint: "#c8a77e" },
+      {
+        code: "inlayGreen",
+        swatch: "radial-gradient(circle, #ecebe4 0 36%, #1f5a45 39% 62%, #ecebe4 65%)",
+        pattern: "inlay",
+      },
     ],
   },
   {
@@ -165,7 +176,7 @@ export const presets: Preset[] = [
     code: "inox",
     swatches: ["#cfcfd2", "#ecebe8", "#cfcfd2"],
     picks: {
-      exterior: "wallCream", floor: "stoneWhite", ceiling: "lightNeutral", cabinWall: "inox", cabinDoor: "inox",
+      exterior: "inox", floor: "stoneWhite", ceiling: "lightNeutral", cabinWall: "inox", cabinDoor: "inox",
       landingDoor: "", handrail: "inox", cabinButtons: "btnInox", hallButtons: "btnInox", doorFrame: "inox",
     },
   },
@@ -173,7 +184,7 @@ export const presets: Preset[] = [
     code: "rose",
     swatches: ["#c58f7e", "#c8a77e", "#ffd9a0"],
     picks: {
-      exterior: "wallBlush", floor: "stoneWarm", ceiling: "lightWarm", cabinWall: "rose", cabinDoor: "rose",
+      exterior: "rose", floor: "stoneWarm", ceiling: "lightWarm", cabinWall: "rose", cabinDoor: "rose",
       landingDoor: "", handrail: "rose", cabinButtons: "btnRose", hallButtons: "btnRose", doorFrame: "rose",
     },
   },
@@ -181,7 +192,7 @@ export const presets: Preset[] = [
     code: "bronze",
     swatches: ["#a07a50", "#3a3a3e", "#ffd9a0"],
     picks: {
-      exterior: "wallCream", floor: "stoneBlack", ceiling: "lightWarm", cabinWall: "bronze", cabinDoor: "bronze",
+      exterior: "bronze", floor: "stoneBlack", ceiling: "lightWarm", cabinWall: "bronze", cabinDoor: "bronze",
       landingDoor: "", handrail: "brass", cabinButtons: "btnBrass", hallButtons: "btnBrass", doorFrame: "bronze",
     },
   },
@@ -189,7 +200,7 @@ export const presets: Preset[] = [
     code: "champagne",
     swatches: ["#d8c39a", "#ecebe8", "#fff6ea"],
     picks: {
-      exterior: "wallCream", floor: "stoneWhite", ceiling: "lightNeutral", cabinWall: "champagne",
+      exterior: "champagne", floor: "stoneWhite", ceiling: "lightNeutral", cabinWall: "champagne",
       cabinDoor: "champagne", landingDoor: "", handrail: "champagne", cabinButtons: "btnBrass",
       hallButtons: "btnBrass", doorFrame: "champagne",
     },
@@ -198,7 +209,7 @@ export const presets: Preset[] = [
     code: "black",
     swatches: ["#2b2b2d", "#3a3a3e", "#d6e6ff"],
     picks: {
-      exterior: "wallGrey", floor: "stoneBlack", ceiling: "lightCool", cabinWall: "black", cabinDoor: "black",
+      exterior: "black", floor: "stoneBlack", ceiling: "lightCool", cabinWall: "black", cabinDoor: "black",
       landingDoor: "", handrail: "brass", cabinButtons: "btnBlack", hallButtons: "btnBlack", doorFrame: "black",
     },
   },

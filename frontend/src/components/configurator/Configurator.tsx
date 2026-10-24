@@ -5,12 +5,15 @@ import type { KeyboardEvent } from "react";
 import dynamic from "next/dynamic";
 import { useMessages } from "@/i18n/LocaleProvider";
 import { defaultSelection, groupOrder, groups, presets } from "./config";
-import type { GroupId, Selection, ViewId } from "./config";
+import type { GroupId, Selection, Space, ViewId } from "./config";
 
 // three.js touches `window`, so the canvas only loads in the browser.
 const CabinCanvas = dynamic(() => import("./CabinCanvas"), { ssr: false });
 
-const views: ViewId[] = ["lobby", "inside", "room"];
+const spaces: Space[] = ["room", "lift"];
+/** The views offered for each space; the last one is the wide shot. */
+const viewsFor: Record<Space, ViewId[]> = { room: ["lobby", "inside", "room"], lift: ["lobby", "inside", "angle"] };
+const wideView: Record<Space, ViewId> = { room: "room", lift: "angle" };
 const selectionIds = Object.keys(defaultSelection) as Exclude<GroupId, "preset">[];
 
 type Status = "loading" | "ready" | "error";
@@ -36,6 +39,7 @@ export function Configurator({ email }: { email: string }) {
   const m = useMessages().customize;
   const [selection, setSelection] = useState<Selection>(defaultSelection);
   const [preset, setPreset] = useState<string | null>("inox");
+  const [space, setSpace] = useState<Space>("room");
   const [view, setView] = useState<ViewId>("lobby");
   const [tab, setTab] = useState<GroupId>("preset");
   const [doorsOpen, setDoorsOpen] = useState(true);
@@ -49,8 +53,11 @@ export function Configurator({ email }: { email: string }) {
     const saved = readUrl(window.location.search);
     setSelection(saved.selection);
     setPreset(saved.preset);
-    const savedView = new URLSearchParams(window.location.search).get("view");
-    if (views.some((v) => v === savedView)) setView(savedView as ViewId);
+    const params = new URLSearchParams(window.location.search);
+    const savedSpace: Space = params.get("space") === "lift" ? "lift" : "room";
+    setSpace(savedSpace);
+    const savedView = params.get("view");
+    if (viewsFor[savedSpace].some((v) => v === savedView)) setView(savedView as ViewId);
     setRestored(true);
   }, []);
 
@@ -59,10 +66,17 @@ export function Configurator({ email }: { email: string }) {
     const params = new URLSearchParams();
     if (preset && preset !== "inox") params.set("preset", preset);
     for (const id of selectionIds) if (selection[id] !== defaultSelection[id]) params.set(id, selection[id]);
+    if (space !== "room") params.set("space", space);
     if (view !== "lobby") params.set("view", view);
     const query = params.toString();
     window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
-  }, [selection, preset, view, restored]);
+  }, [selection, preset, view, space, restored]);
+
+  const chooseSpace = (next: Space) => {
+    setSpace(next);
+    // the wide shot differs per space: keep the viewer on a wide shot rather than on one that no longer exists
+    if (view === wideView.room || view === wideView.lift) setView(wideView[next]);
+  };
 
   const choose = (id: Exclude<GroupId, "preset">, code: string) => {
     setSelection((s) => ({ ...s, [id]: code }));
@@ -127,6 +141,7 @@ export function Configurator({ email }: { email: string }) {
             selection={selection}
             view={view}
             doorsOpen={doorsOpen}
+            space={space}
             onReady={onReady}
             onError={onError}
             onProgress={setProgress}
@@ -141,8 +156,18 @@ export function Configurator({ email }: { email: string }) {
         </div>
 
         <div className="cfg__bar">
+          <div className="cfg__seg" role="group" aria-label={m.spaceLabel}>
+            {spaces.map((sp) => (
+              <button key={sp} type="button" className="cfg__segbtn" aria-pressed={space === sp} onClick={() => chooseSpace(sp)}>
+                {m.spaces[sp]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="cfg__bar">
           <div className="cfg__seg" role="group" aria-label={m.viewLabel}>
-            {views.map((v) => (
+            {viewsFor[space].map((v) => (
               <button key={v} type="button" className="cfg__segbtn" aria-pressed={view === v} onClick={() => setView(v)}>
                 {m.views[v]}
               </button>
@@ -202,6 +227,7 @@ export function Configurator({ email }: { email: string }) {
             </>
           )}
 
+          {group && group.id === "exterior" && space === "room" && <p className="cfg__custom">{m.exteriorHint}</p>}
           {group && group.options.length === 0 && <p className="muted cfg__note">{m.unavailable}</p>}
 
           {group && group.options.length > 0 && (
